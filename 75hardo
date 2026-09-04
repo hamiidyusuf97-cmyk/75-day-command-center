@@ -1,0 +1,246 @@
+from pathlib import Path
+import re
+
+out = Path("/mnt/data/DISCIPLINE_75_day_dashboard_upgraded.html")
+s = out.read_text(encoding="utf-8")
+
+# The previous in-place body replacement intentionally removed the old script;
+# restore the upgraded script implementation before <!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
+</script>
+</body>.
+# Keep this script identical to the upgraded implementation already constructed in this turn.
+script = r"""
+const TASKS=[
+  {id:"w1",title:"Workout 1",sub:"45-minute session + evidence",pts:15},
+  {id:"w2",title:"Workout 2",sub:"Second session + evidence",pts:15},
+  {id:"diet",title:"Diet",sub:"Stay on plan",pts:15},
+  {id:"water",title:"Water",sub:"Complete daily target",pts:10},
+  {id:"read",title:"Reading",sub:"10 pages",pts:5},
+  {id:"photo",title:"Progress photo",sub:"Daily check-in",pts:5},
+  {id:"sleep",title:"Sleep",sub:"Hit your target",pts:10},
+  {id:"recovery",title:"Recovery",sub:"Readiness logged",pts:5},
+  {id:"deen",title:"Deen / learning",sub:"Quran or Islamic learning",pts:5},
+  {id:"mosque",title:"Mosque",sub:"Attendance logged",pts:5},
+  {id:"cal",title:"Calorie target",sub:"Within personal target",pts:5},
+  {id:"protein",title:"Protein target",sub:"Hit personal target",pts:5}
+];
+const QUOTES=[
+  {text:"Discipline is choosing what you want most over what you want now.",src:"DISCIPLINE",cat:"DISCIPLINE"},
+  {text:"Consistency compounds.",src:"CONSISTENCY",cat:"CONSISTENCY"},
+  {text:"Resilience is built by returning to the work.",src:"RESILIENCE",cat:"RESILIENCE"},
+  {text:"Do the work you said you would do.",src:"MINDSET",cat:"MINDSET"},
+  {text:"Train with purpose. Recover with intent.",src:"FITNESS",cat:"FITNESS"},
+  {text:"Allah does not burden a soul beyond what it can bear.",src:"QUR’AN 2:286",cat:"ISLAMIC / QURAN"},
+  {text:"Indeed, Allah is with the patient.",src:"QUR’AN 2:153",cat:"ISLAMIC / QURAN"},
+  {text:"And whoever relies upon Allah — He is sufficient for him.",src:"QUR’AN 65:3",cat:"ISLAMIC / QURAN"},
+  {text:"For in the remembrance of Allah do hearts find rest.",src:"QUR’AN 13:28",cat:"ISLAMIC / QURAN"}
+];
+const STORAGE_KEY="discipline-dashboard-v4";
+const PHOTO_MAX_BYTES=900000;
+const DEFAULT_STATE={
+  version:4,currentDay:1,theme:"dark",days:{},members:[],
+  settings:{name:"You",targets:{calories:2500,protein:180,sleep:8,water:8}},
+  quote:{index:0,changedAt:Date.now()},whatsapp:{groupLink:""}
+};
+let state=loadState(),saveTimer=0,toastTimer=0,quoteTimer=0;
+
+function deepClone(v){return JSON.parse(JSON.stringify(v))}
+function loadState(){
+  try{const raw=localStorage.getItem(STORAGE_KEY);return raw?normalizeState(JSON.parse(raw)):deepClone(DEFAULT_STATE)}
+  catch(error){console.warn("Recovered from malformed dashboard storage.",error);return deepClone(DEFAULT_STATE)}
+}
+function normalizeState(s){
+  const out=Object.assign(deepClone(DEFAULT_STATE),s||{});
+  out.currentDay=Math.max(1,Math.min(75,Number(out.currentDay)||1));
+  out.days=out.days&&typeof out.days==="object"?out.days:{};
+  out.members=Array.isArray(out.members)?out.members:[];
+  out.settings=Object.assign(deepClone(DEFAULT_STATE.settings),out.settings||{});
+  out.settings.targets=Object.assign(deepClone(DEFAULT_STATE.settings.targets),out.settings.targets||{});
+  out.quote=Object.assign(deepClone(DEFAULT_STATE.quote),out.quote||{});
+  out.whatsapp=Object.assign(deepClone(DEFAULT_STATE.whatsapp),out.whatsapp||{});
+  for(let d=1;d<=75;d++)if(out.days[d])out.days[d]=normalizeDay(out.days[d]);
+  return out;
+}
+function normalizeDay(e){
+  e=e&&typeof e==="object"?e:{};
+  e.tasks=e.tasks&&typeof e.tasks==="object"?e.tasks:{};
+  TASKS.forEach(t=>{if(typeof e.tasks[t.id]!=="boolean")e.tasks[t.id]=false});
+  e.water=clampNumber(e.water,0,8,0);e.notes=typeof e.notes==="string"?e.notes:"";
+  e.metrics=Object.assign({weight:null,waist:null,chest:null,arms:null,legs:null,bodyFat:null},e.metrics||{});
+  e.nutrition=Object.assign({calories:null,protein:null,carbs:null,fats:null,fibre:null},e.nutrition||{});
+  e.recovery=Object.assign({sleep:null,sleepQuality:null,restingHR:null,hrv:null,recoveryScore:null},e.recovery||{});
+  e.deen=Object.assign({quranPages:0,learningMinutes:0,mosque:false,dhikr:false,personalGoal:""},e.deen||{});
+  e.workout=Object.assign({type:"",duration:null,distance:null,notes:""},e.workout||{});
+  e.photos=Array.isArray(e.photos)?e.photos:[];e.achievements=Array.isArray(e.achievements)?e.achievements:[];
+  return e;
+}
+function clampNumber(v,min,max,fallback){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,n)):fallback}
+function getDay(n){if(!state.days[n])state.days[n]=normalizeDay({});else state.days[n]=normalizeDay(state.days[n]);return state.days[n]}
+function persistNow(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}catch(error){console.warn("Could not save dashboard state.",error);showToast("Storage limit reached — reduce stored photos")}}
+function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(persistNow,0)}
+function scoreFor(day=state.currentDay){const e=getDay(day);return TASKS.reduce((sum,t)=>sum+(e.tasks[t.id]?t.pts:0),0)}
+function countDone(day=state.currentDay){const e=getDay(day);return TASKS.reduce((n,t)=>n+(e.tasks[t.id]?1:0),0)}
+function perfectDays(){let n=0;for(let d=1;d<=75;d++)if(scoreFor(d)===100)n++;return n}
+function streak(){let n=0;for(let d=state.currentDay;d>=1;d--){if(scoreFor(d)===100)n++;else break}return n}
+function bestStreak(){let best=0,n=0;for(let d=1;d<=75;d++){if(scoreFor(d)===100){n++;best=Math.max(best,n)}else n=0}return best}
+function totalXP(){let n=0;for(let d=1;d<=75;d++)n+=scoreFor(d);return n}
+function avgScore(){let total=0,active=0;for(let d=1;d<=75;d++)if(state.days[d]){total+=scoreFor(d);active++}return active?Math.round(total/active):0}
+function calculateDailyScore(day=state.currentDay){return scoreFor(day)}
+function calculateWeeklyScore(day=state.currentDay){let n=0;for(let d=Math.max(1,day-6);d<=day;d++)n+=scoreFor(d);return n}
+function calculateChallengeScore(){return totalXP()}
+function calculateConsistency(){return Math.round(calculateChallengeScore()/(Math.max(1,Object.keys(state.days).length)*100)*100)}
+function calculateLeaderboard(){
+  const me={id:"self",name:state.settings.name||"You",avatar:state.settings.avatar||"",totalPoints:calculateChallengeScore(),streak:streak(),averageDailyScore:avgScore(),completionPct:Math.round(perfectDays()/75*100),weeklyPoints:calculateWeeklyScore(),rankMovement:0,isMe:true};
+  const rows=[me,...state.members.map(m=>({id:m.id,name:m.name||"Member",avatar:m.avatar||"",totalPoints:clampNumber(m.totalPoints,0,999999999,0),streak:clampNumber(m.streak,0,75,0),averageDailyScore:clampNumber(m.averageDailyScore,0,100,0),completionPct:clampNumber(m.completionPct,0,100,0),weeklyPoints:clampNumber(m.weeklyPoints,0,700,0),rankMovement:clampNumber(m.rankMovement,-99,99,0),isMe:false}))];
+  rows.sort((a,b)=>b.totalPoints-a.totalPoints||b.averageDailyScore-a.averageDailyScore||b.streak-a.streak||a.name.localeCompare(b.name));
+  rows.forEach((r,i)=>r.rank=i+1);return rows;
+}
+function updateAll(){updateDailyMetrics();updateStats();updateLeader();updateChart();updateTrackerDay(state.currentDay);updateNutrition();updateRecovery();updateDeen();updateNotes();updatePhotos();updateWhatsApp();updateInsights()}
+function renderTasks(){
+  const list=document.getElementById("taskList");list.textContent="";const e=getDay(state.currentDay);
+  TASKS.forEach(t=>{const row=document.createElement("div");row.className="task"+(e.tasks[t.id]?" done":"");row.dataset.taskId=t.id;row.setAttribute("role","checkbox");row.setAttribute("aria-checked",String(!!e.tasks[t.id]));row.tabIndex=0;row.innerHTML=`<div class="check">${e.tasks[t.id]?"✓":""}</div><div><div class="task-title">${t.title}</div><div class="task-sub">${t.sub}</div></div><div class="pts">+${t.pts}</div>`;list.appendChild(row)});
+}
+function renderTaskRow(id){const e=getDay(state.currentDay),row=document.querySelector(`#taskList [data-task-id="${CSS.escape(id)}"]`);if(!row)return;const c=!!e.tasks[id];row.classList.toggle("done",c);row.setAttribute("aria-checked",String(c));row.querySelector(".check").textContent=c?"✓":""}
+function toggleTask(id){const t=TASKS.find(x=>x.id===id);if(!t)return;const e=getDay(state.currentDay),next=!e.tasks[id];e.tasks[id]=next;renderTaskRow(id);updateAll();scheduleSave();showToast(next?`${t.title} completed`:`${t.title} unchecked`)}
+function updateTaskCount(){document.getElementById("taskCount").textContent=`${countDone()} / ${TASKS.length}`}
+function updateDailyMetrics(){
+  const score=calculateDailyScore(),e=getDay(state.currentDay),pct=Math.round(perfectDays()/75*100),wt=state.settings.targets.water;
+  document.getElementById("score").innerHTML=`${score}<small>/100</small>`;document.getElementById("ring").style.setProperty("--p",`${score}%`);document.getElementById("heroScore").textContent=score;document.getElementById("heroDay").textContent=state.currentDay;document.getElementById("dayNow").textContent=state.currentDay;
+  document.getElementById("dayStatus").textContent=score===100?"Day complete ✓":score>0?"In progress":"Not started";document.getElementById("challengePct").textContent=`${pct}%`;document.getElementById("challengeFill").style.width=`${pct}%`;
+  document.getElementById("waterText").textContent=`${e.water} / ${wt} glasses`;document.getElementById("waterFill").style.width=`${Math.min(100,e.water/wt*100)}%`;updateTaskCount()
+}
+function updateStats(){const me=calculateLeaderboard().find(r=>r.isMe);const vals={completedDays:perfectDays(),totalXP:calculateChallengeScore(),bestStreak:bestStreak(),consistency:`${avgScore()}%`,heroStreak:streak(),heroWeekly:calculateWeeklyScore()};Object.entries(vals).forEach(([id,v])=>{document.getElementById(id).textContent=v});document.getElementById("challengeDays").textContent=`${perfectDays()} / 75 days`;document.getElementById("heroRank").textContent=me?`#${me.rank}`:"#—"}
+function updateTrackerDay(day){const dot=document.querySelector(`#tracker [data-day="${day}"]`);if(!dot)return;const c=countDone(day);dot.className="dot"+(day===state.currentDay?" current":"")+(c===TASKS.length?" done":c?" partial":"");dot.title=`Day ${day} — ${scoreFor(day)}/100`}
+function renderTracker(){const grid=document.getElementById("tracker");grid.textContent="";for(let d=1;d<=75;d++){const dot=document.createElement("div");dot.dataset.day=d;dot.setAttribute("role","button");dot.tabIndex=0;grid.appendChild(dot);updateTrackerDay(d)}}
+function selectDay(n){const safe=Math.max(1,Math.min(75,Number(n)||1));if(safe===state.currentDay)return;state.currentDay=safe;renderCurrentDay();scheduleSave()}
+function renderCurrentDay(){getDay(state.currentDay);renderTasks();updateAll()}
+function updateChart(){const el=document.getElementById("scoreChart");if(!el)return;const v=[];for(let d=Math.max(1,state.currentDay-6);d<=state.currentDay;d++)v.push({d,v:scoreFor(d)});while(v.length<7)v.unshift({d:"—",v:0});if(el.children.length!==7){renderChart();return}[...el.children].forEach((b,i)=>{b.querySelector("i").style.height=`${Math.max(8,v[i].v*1.15)}px`;b.querySelector("span").textContent=v[i].d==="—"?"—":`D${v[i].d}`})}
+function renderChart(){const el=document.getElementById("scoreChart");el.textContent="";const v=[];for(let d=Math.max(1,state.currentDay-6);d<=state.currentDay;d++)v.push({d,v:scoreFor(d)});while(v.length<7)v.unshift({d:"—",v:0});v.forEach(x=>{const c=document.createElement("div");c.className="col";const i=document.createElement("i");i.style.height=`${Math.max(8,x.v*1.15)}px`;const s=document.createElement("span");s.textContent=x.d==="—"?"—":`D${x.d}`;c.append(i,s);el.appendChild(c)})}
+function changeWater(amount){const e=getDay(state.currentDay),target=state.settings.targets.water;e.water=Math.max(0,Math.min(target,e.water+amount));e.tasks.water=e.water>=target;renderTaskRow("water");updateAll();scheduleSave();showToast("Water updated")}
+function updateNutrition(){const e=getDay(state.currentDay),n=e.nutrition,t=state.settings.targets;document.getElementById("calorieText").textContent=n.calories==null?`— / ${fmt(t.calories)}`:`${fmt(n.calories)} / ${fmt(t.calories)}`;document.getElementById("proteinText").textContent=n.protein==null?`— / ${fmt(t.protein)}g`:`${fmt(n.protein)}g / ${fmt(t.protein)}g`;document.getElementById("calorieFill").style.width=`${n.calories==null?0:Math.min(100,n.calories/t.calories*100)}%`;document.getElementById("proteinFill").style.width=`${n.protein==null?0:Math.min(100,n.protein/t.protein*100)}%`;document.getElementById("nutritionPct").textContent=nutritionAdherence(e)+"%";document.getElementById("nutritionFill").style.width=nutritionAdherence(e)+"%"}
+function nutritionAdherence(e){const t=state.settings.targets,n=e.nutrition,v=[];if(Number.isFinite(Number(n.calories)))v.push(Math.min(100,Number(n.calories)/t.calories*100));if(Number.isFinite(Number(n.protein)))v.push(Math.min(100,Number(n.protein)/t.protein*100));return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):0}
+function updateRecovery(){const r=getDay(state.currentDay).recovery;document.getElementById("recoverySleep").textContent=r.sleep==null?"—":`${r.sleep}h`;document.getElementById("recoveryHR").textContent=r.restingHR==null?"—":r.restingHR;document.getElementById("recoveryHRV").textContent=r.hrv==null?"—":r.hrv;document.getElementById("recoveryReady").textContent=r.recoveryScore==null?"—":r.recoveryScore;const ready=r.recoveryScore==null?0:clampNumber(r.recoveryScore,0,100,0);document.getElementById("recoveryPct").textContent=`${ready}%`;document.getElementById("recoveryFill").style.width=`${ready}%`;const sleep=Number(r.sleep);document.getElementById("metricSleep").textContent=Number.isFinite(sleep)?`${Math.floor(sleep)}h ${Math.round(sleep%1*60)}m`:"—";document.getElementById("metricSleepDelta").textContent=Number.isFinite(sleep)?`${Math.round(sleep/state.settings.targets.sleep*100)}% target`:"not logged"}
+function updateDeen(){const d=getDay(state.currentDay).deen;document.getElementById("deenQuran").textContent=fmt(d.quranPages);document.getElementById("deenLearning").textContent=`${fmt(d.learningMinutes)}m`;document.getElementById("deenMosque").textContent=d.mosque?"✓":"—";document.getElementById("deenDhikr").textContent=d.dhikr?"✓":"—"}
+function updateNotes(){document.getElementById("notes").value=getDay(state.currentDay).notes||""}
+function updatePhotos(){
+  const el=document.getElementById("photoGallery"),photos=getDay(state.currentDay).photos;el.textContent="";
+  if(!photos.length){el.innerHTML=`<div class="empty" style="grid-column:1/-1">No evidence photos for Day ${state.currentDay}. Add front, side or back progress shots when appropriate.</div>`;return}
+  photos.forEach(p=>{const card=document.createElement("div");card.className="photo-card";card.innerHTML=`<img src="${p.data}" alt="Progress photo, Day ${state.currentDay}, ${escapeHtml(p.position||"check-in")}"><div class="photo-meta"><b>Day ${state.currentDay} • ${escapeHtml(p.position||"Check-in")}</b><small>${new Date(p.timestamp).toLocaleString()}${p.note?` • ${escapeHtml(p.note)}`:""}</small><div class="photo-actions"><button class="btn sm" data-share-photo="${p.id}">Share</button><button class="btn sm danger" data-delete-photo="${p.id}">Delete</button></div></div>`;el.appendChild(card)})
+}
+function updateWhatsApp(){document.getElementById("waLinkText").textContent=state.whatsapp.groupLink||"No WhatsApp group saved."}
+function updateInsights(){
+  let training=0,sleeps=[],pros=[];for(let d=Math.max(1,state.currentDay-6);d<=state.currentDay;d++){const e=getDay(d);if(e.tasks.w1||e.tasks.w2)training++;if(Number.isFinite(Number(e.recovery.sleep)))sleeps.push(Number(e.recovery.sleep));if(Number.isFinite(Number(e.nutrition.protein)))pros.push(Number(e.nutrition.protein)/state.settings.targets.protein*100)}
+  document.getElementById("trainingPct").textContent=`${Math.round(training/7*100)}%`;document.getElementById("trainingFill").style.width=`${training/7*100}%`;document.getElementById("insightTraining").textContent=`${training} / 7`;document.getElementById("insightSleep").textContent=sleeps.length?`${(sleeps.reduce((a,b)=>a+b,0)/sleeps.length).toFixed(1)}h`:"—";document.getElementById("insightProtein").textContent=pros.length?`${Math.round(pros.reduce((a,b)=>a+b,0)/pros.length)}%`:"—";const me=calculateLeaderboard().find(x=>x.isMe);document.getElementById("insightRank").textContent=me?(me.rankMovement>0?`↑ ${me.rankMovement}`:me.rankMovement<0?`↓ ${Math.abs(me.rankMovement)}`:"—"):"—";const m=getDay(state.currentDay).metrics;document.getElementById("metricWeight").textContent=m.weight==null?"—":`${m.weight} kg`;document.getElementById("metricWeightDelta").textContent=m.waist!=null?`Waist ${m.waist} cm`:"not logged";const p=getDay(state.currentDay).nutrition.protein;document.getElementById("metricProtein").textContent=Number.isFinite(Number(p))?`${p}g`:"—";document.getElementById("metricProteinDelta").textContent=nutritionAdherence(getDay(state.currentDay))+"% adherence"
+}
+function updateLeader(){const el=document.getElementById("leader");el.textContent="";calculateLeaderboard().slice(0,7).forEach(p=>{const row=document.createElement("div");row.className="leader-row"+(p.isMe?" me":"");const mv=p.rankMovement>0?`↑ +${p.rankMovement}`:p.rankMovement<0?`↓ ${p.rankMovement}`:"—",mc=p.rankMovement>0?"up":p.rankMovement<0?"down":"same",avatar=p.avatar?`<img src="${p.avatar}" alt="">`:escapeHtml((p.name||"?")[0].toUpperCase());row.innerHTML=`<div class="rank">${medal(p.rank)}</div><div class="person"><div class="avatar">${avatar}</div><div><b>${escapeHtml(p.name)}</b><small>${p.streak} day streak • ${p.averageDailyScore}% avg</small></div></div><div class="score-col">${fmt(p.totalPoints)}</div><div class="move ${mc}">${mv}</div>`;el.appendChild(row)})}
+function medal(r){return r===1?"🥇":r===2?"🥈":r===3?"🥉":r}
+function fmt(n){return Number(n||0).toLocaleString()}
+function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function openModal(title,text,content){document.getElementById("modalTitle").textContent=title;document.getElementById("modalText").textContent=text||"";document.getElementById("modalContent").innerHTML=content||"";document.getElementById("modal").classList.add("open")}
+function closeModal(){document.getElementById("modal").classList.remove("open")}
+function showToast(msg){const e=document.getElementById("toast");e.textContent=msg;e.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove("show"),1500)}
+function scoreBreakdown(){const e=getDay(state.currentDay),rows=TASKS.map(t=>`<div class="bd-row"><span>${escapeHtml(t.title)}</span><b>${e.tasks[t.id]?t.pts:0} / ${t.pts}</b></div>`).join("");openModal("Score breakdown",`Day ${state.currentDay} • ${scoreFor()}/100`,`<div class="breakdown">${rows}</div><p style="margin-top:12px">Point values are configuration-driven in TASKS. All dashboard scoring uses this single scoring engine.</p>`)}
+function field(label,id,type,value,hint=""){return `<div class="field"><label>${escapeHtml(label)}</label><input class="input" id="f_${id}" type="${type}" value="${escapeHtml(value)}" min="0" step="any"><span class="hint">${escapeHtml(hint)}</span></div>`}
+function readNum(id,min=0,max=Infinity,allowBlank=true){const raw=document.getElementById(id)?.value.trim();if(raw===""&&allowBlank)return null;const n=Number(raw);if(!Number.isFinite(n)||n<min||n>max)throw new Error(`Invalid value for ${id.replace("f_","")}.`);return n}
+function safeSave(fn){try{fn()}catch(err){showToast(err.message)}}
+function saveAndRefresh(msg){persistNow();closeModal();renderCurrentDay();showToast(msg)}
+function addDataModal(type="general"){
+  const e=getDay(state.currentDay),n=e.nutrition,r=e.recovery,m=e.metrics,d=e.deen,w=e.workout;let content="";
+  if(type==="nutrition")content=`<div class="form-grid">${field("Calories","calories","number",n.calories??"",`Target ${state.settings.targets.calories}`)}${field("Protein (g)","protein","number",n.protein??"",`Target ${state.settings.targets.protein}g`)}${field("Carbohydrates (g)","carbs","number",n.carbs??"","Optional")}${field("Fats (g)","fats","number",n.fats??"","Optional")}${field("Fibre (g)","fibre","number",n.fibre??"","Optional")}</div><div class="form-actions"><button class="btn primary" id="saveNutrition">Save nutrition</button></div>`;
+  else if(type==="recovery")content=`<div class="form-grid">${field("Sleep (hours)","sleep","number",r.sleep??"",`Target ${state.settings.targets.sleep}h`)}${field("Sleep quality (0–100)","sleepQuality","number",r.sleepQuality??"","0–100")}${field("Resting HR","restingHR","number",r.restingHR??"","bpm")}${field("HRV","hrv","number",r.hrv??"","ms")}${field("Recovery score (0–100)","recoveryScore","number",r.recoveryScore??"","0–100")}</div><div class="form-actions"><button class="btn primary" id="saveRecovery">Save recovery</button></div>`;
+  else if(type==="deen")content=`<div class="form-grid">${field("Quran reading (pages)","quranPages","number",d.quranPages,"Pages")}${field("Islamic learning (minutes)","learningMinutes","number",d.learningMinutes,"Minutes")}<div class="field"><label>Mosque attendance</label><select class="select" id="f_mosque"><option value="false" ${!d.mosque?"selected":""}>Not logged</option><option value="true" ${d.mosque?"selected":""}>Logged</option></select></div><div class="field"><label>Dhikr</label><select class="select" id="f_dhikr"><option value="false" ${!d.dhikr?"selected":""}>Not logged</option><option value="true" ${d.dhikr?"selected":""}>Logged</option></select></div></div><div class="form-actions"><button class="btn primary" id="saveDeen">Save Deen log</button></div>`;
+  else if(type==="metrics")content=`<div class="form-grid three">${field("Weight (kg)","weight","number",m.weight??"","Optional")}${field("Waist (cm)","waist","number",m.waist??"","Optional")}${field("Chest (cm)","chest","number",m.chest??"","Optional")}${field("Arms (cm)","arms","number",m.arms??"","Optional")}${field("Legs (cm)","legs","number",m.legs??"","Optional")}${field("Body-fat estimate (%)","bodyFat","number",m.bodyFat??"","Optional")}</div><div class="form-actions"><button class="btn primary" id="saveMetrics">Save body metrics</button></div>`;
+  else if(type==="workout")content=`<div class="form-grid">${field("Workout type","workoutType","text",w.type||"","e.g. football / strength / run")}${field("Duration (minutes)","workoutDuration","number",w.duration??"","Optional")}${field("Distance (km)","workoutDistance","number",w.distance??"","Optional")}<div class="field" style="grid-column:1/-1"><label>Workout notes</label><textarea class="notes" id="f_workoutNotes">${escapeHtml(w.notes||"")}</textarea></div></div><div class="form-actions"><button class="btn primary" id="saveWorkout">Save workout log</button></div>`;
+  else content=`<div class="quick"><button class="btn" data-log-type="nutrition">Nutrition</button><button class="btn" data-log-type="recovery">Recovery</button><button class="btn" data-log-type="metrics">Body metrics</button><button class="btn" data-log-type="workout">Workout</button><button class="btn" data-log-type="deen">Deen</button><button class="btn" data-log-type="photo">Progress photo</button></div><p class="hint" style="margin-top:13px">Every saved entry immediately recalculates the central score and dependent dashboard metrics.</p>`;
+  openModal("Add / Log data",`Day ${state.currentDay}`,content);wireForm(type)
+}
+function wireForm(type){
+  document.querySelectorAll("[data-log-type]").forEach(b=>b.onclick=()=>addDataModal(b.dataset.logType));
+  if(type==="nutrition")document.getElementById("saveNutrition").onclick=()=>safeSave(()=>{const e=getDay(),n=e.nutrition;n.calories=readNum("f_calories",0);n.protein=readNum("f_protein",0);n.carbs=readNum("f_carbs",0);n.fats=readNum("f_fats",0);n.fibre=readNum("f_fibre",0);e.tasks.cal=Number.isFinite(n.calories)&&Math.abs(n.calories-state.settings.targets.calories)<=Math.max(150,state.settings.targets.calories*.08);e.tasks.protein=Number.isFinite(n.protein)&&n.protein>=state.settings.targets.protein;saveAndRefresh("Nutrition saved")});
+  if(type==="recovery")document.getElementById("saveRecovery").onclick=()=>safeSave(()=>{const e=getDay(),r=e.recovery;r.sleep=readNum("f_sleep",0,24);r.sleepQuality=readNum("f_sleepQuality",0,100);r.restingHR=readNum("f_restingHR",0,300);r.hrv=readNum("f_hrv",0,1000);r.recoveryScore=readNum("f_recoveryScore",0,100);e.tasks.sleep=Number.isFinite(r.sleep)&&r.sleep>=state.settings.targets.sleep;e.tasks.recovery=Number.isFinite(r.recoveryScore);saveAndRefresh("Recovery saved")});
+  if(type==="deen")document.getElementById("saveDeen").onclick=()=>safeSave(()=>{const e=getDay(),d=e.deen;d.quranPages=readNum("f_quranPages",0,10000,false);d.learningMinutes=readNum("f_learningMinutes",0,10000,false);d.mosque=document.getElementById("f_mosque").value==="true";d.dhikr=document.getElementById("f_dhikr").value==="true";e.tasks.deen=d.quranPages>0||d.learningMinutes>0;e.tasks.mosque=d.mosque;saveAndRefresh("Deen log saved")});
+  if(type==="metrics")document.getElementById("saveMetrics").onclick=()=>safeSave(()=>{const e=getDay(),m=e.metrics;m.weight=readNum("f_weight",0,500);m.waist=readNum("f_waist",0,300);m.chest=readNum("f_chest",0,300);m.arms=readNum("f_arms",0,150);m.legs=readNum("f_legs",0,200);m.bodyFat=readNum("f_bodyFat",0,100);saveAndRefresh("Body metrics saved")});
+  if(type==="workout")document.getElementById("saveWorkout").onclick=()=>safeSave(()=>{const e=getDay(),w=e.workout;w.type=document.getElementById("f_workoutType").value.trim();w.duration=readNum("f_workoutDuration",0,1440);w.distance=readNum("f_workoutDistance",0,1000);w.notes=document.getElementById("f_workoutNotes").value;e.tasks.w1=!!w.type||!!w.duration;saveAndRefresh("Workout log saved")})
+}
+function compressImage(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{const max=1200,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.max(1,Math.round(img.width*scale));c.height=Math.max(1,Math.round(img.height*scale));c.getContext("2d").drawImage(img,0,0,c.width,c.height);let q=.78,data=c.toDataURL("image/jpeg",q);while(data.length>PHOTO_MAX_BYTES*1.37&&q>.45){q-=.07;data=c.toDataURL("image/jpeg",q)}data.length>PHOTO_MAX_BYTES*1.37?reject(new Error("Photo is still too large after compression.")):resolve(data)};img.onerror=()=>reject(new Error("Invalid image."));img.src=r.result};r.onerror=()=>reject(new Error("Could not read image."));r.readAsDataURL(file)})}
+function addPhoto(){
+  openModal("Add progress photo",`Day ${state.currentDay} • photos stay local to this browser`,`<div class="form-grid"><div class="field"><label>Position</label><select class="select" id="photoPosition"><option>Front</option><option>Side</option><option>Back</option><option>Check-in</option></select></div><div class="field"><label>Note (optional)</label><input class="input" id="photoNote" maxlength="160" placeholder="e.g. morning check-in"></div><div class="field" style="grid-column:1/-1"><label>Photo</label><input class="input" id="photoInput" type="file" accept="image/*"><span class="hint">Images are resized/compressed before local storage.</span></div></div><div class="form-actions"><button class="btn" id="cancelPhoto">Cancel</button><button class="btn primary" id="savePhoto">Save photo</button></div>`);
+  document.getElementById("cancelPhoto").onclick=closeModal;document.getElementById("savePhoto").onclick=async()=>{const file=document.getElementById("photoInput").files[0];if(!file){showToast("Choose a photo first");return}try{const data=await compressImage(file),e=getDay();e.photos.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random()),data,timestamp:Date.now(),position:document.getElementById("photoPosition").value,note:document.getElementById("photoNote").value.trim()});e.tasks.photo=true;persistNow();closeModal();renderCurrentDay();showToast("Progress photo saved locally")}catch(err){showToast(err.message||"Photo could not be saved")}}
+}
+function sharePhoto(id){const p=getDay().photos.find(x=>x.id===id);if(!p)return;const text=`DISCIPLINE — DAY ${state.currentDay}/75\nProgress photo: ${p.position||"check-in"}\nAttach the saved photo manually in WhatsApp if your device does not expose it through the share sheet.`;if(navigator.share)navigator.share({title:`DISCIPLINE — Day ${state.currentDay}`,text}).catch(()=>{});else window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,"_blank")}
+function deletePhoto(id){if(!confirm("Delete this local progress photo?"))return;const e=getDay();e.photos=e.photos.filter(p=>p.id!==id);if(!e.photos.length)e.tasks.photo=false;persistNow();renderCurrentDay();showToast("Photo deleted")}
+function memberModal(id=null){
+  const m=id?state.members.find(x=>x.id===id):null,c=m?m:{name:"",totalPoints:0,streak:0,averageDailyScore:0,completionPct:0,weeklyPoints:0,rankMovement:0,avatar:""};
+  openModal(m?"Edit member":"Add challenge member","Prototype member data is stored locally. Ranking order is calculated automatically.",`<div class="form-grid">${field("Name","memberName","text",c.name,"Required")}${field("Total points","memberPoints","number",c.totalPoints,"0 or higher")}${field("Current streak","memberStreak","number",c.streak,"0–75")}${field("Average daily score","memberAvg","number",c.averageDailyScore,"0–100")}${field("Challenge completion %","memberCompletion","number",c.completionPct,"0–100")}${field("Weekly points","memberWeekly","number",c.weeklyPoints,"0–700")}${field("Rank movement","memberMove","number",c.rankMovement,"Negative = down")}<div class="field" style="grid-column:1/-1"><label>Avatar (optional)</label><input class="input" id="memberAvatar" type="file" accept="image/*"><span class="hint">Avatar is optional and compressed before storage.</span></div></div><div class="form-actions"><button class="btn danger" id="deleteMember" ${m?"":"style='display:none'"}>Remove</button><button class="btn" id="cancelMember">Cancel</button><button class="btn primary" id="saveMember">Save member</button></div>`);
+  document.getElementById("cancelMember").onclick=closeModal;document.getElementById("deleteMember").onclick=()=>{if(m&&confirm(`Remove ${m.name}?`)){state.members=state.members.filter(x=>x.id!==m.id);persistNow();closeModal();updateAll();showToast("Member removed")}};
+  document.getElementById("saveMember").onclick=async()=>{try{const name=document.getElementById("f_memberName").value.trim();if(!name)throw new Error("Name is required.");let avatar=c.avatar;const file=document.getElementById("memberAvatar").files[0];if(file)avatar=await compressImage(file);const data={id:m?.id||("m_"+Date.now()),name,totalPoints:readNum("f_memberPoints",0),streak:readNum("f_memberStreak",0,75,false),averageDailyScore:readNum("f_memberAvg",0,100,false),completionPct:readNum("f_memberCompletion",0,100,false),weeklyPoints:readNum("f_memberWeekly",0,700,false),rankMovement:readNum("f_memberMove",-99,99,false),avatar};if(m)Object.assign(m,data);else state.members.push(data);persistNow();closeModal();updateAll();showToast(m?"Member updated":"Member added")}catch(err){showToast(err.message)}}
+}
+function leaderboardModal(){const rows=calculateLeaderboard().map(p=>`<div class="bd-row"><span>#${p.rank} • ${escapeHtml(p.name)}${p.isMe?" (you)":""}</span><b>${fmt(p.totalPoints)} pts • ${p.weeklyPoints} weekly</b></div>`).join("");openModal("Full leaderboard","Calculated dynamically from the central leaderboard engine.",`<div class="breakdown">${rows}</div>`)}
+function whatsappSettings(){openModal("WhatsApp Challenge Chat","Save an invite link. The browser cannot confirm delivery.",`<div class="field"><label>WhatsApp group invite link</label><input class="input" id="waGroupInput" type="url" value="${escapeHtml(state.whatsapp.groupLink||"")}" placeholder="https://chat.whatsapp.com/..."><span class="hint">Stored locally in this browser. Opening or sharing may still require you to choose the chat and confirm on your device.</span></div><div class="form-actions"><button class="btn primary" id="saveWa">Save group</button></div>`);document.getElementById("saveWa").onclick=()=>{const v=document.getElementById("waGroupInput").value.trim();if(v&&!/^https:\/\/chat\.whatsapp\.com\//i.test(v)){showToast("Use a WhatsApp group invite link.");return}state.whatsapp.groupLink=v;persistNow();closeModal();updateWhatsApp();showToast("WhatsApp settings saved")}}
+function openWhatsApp(){if(state.whatsapp.groupLink)window.open(state.whatsapp.groupLink,"_blank");else whatsappSettings()}
+function shareText(kind){const me=calculateLeaderboard().find(r=>r.isMe),score=calculateDailyScore(),pct=Math.round(perfectDays()/75*100);let text=`DISCIPLINE — DAY ${state.currentDay}/75\nDaily Score: ${score}/100\nStreak: ${streak()} days\nChallenge Progress: ${pct}%\nLeaderboard Rank: #${me?.rank||"—"}`;if(kind==="score")text=`DISCIPLINE — DAY ${state.currentDay}/75\nDaily Score: ${score}/100\nWeekly Score: ${calculateWeeklyScore()}/700`;if(kind==="achievement")text=`DISCIPLINE ACHIEVEMENT\nDay ${state.currentDay}/75\n${score}/100 daily score\nBest streak: ${bestStreak()} days\nTotal points: ${calculateChallengeScore()}`;window.open(`https://wa.me/?text=${encodeURIComponent(text)}`,"_blank")}
+function quoteRemaining(){const left=Math.max(0,8*60*60*1000-(Date.now()-Number(state.quote.changedAt||Date.now()))),h=Math.floor(left/3600000),m=Math.floor(left%3600000/60000);return `${h}h ${String(m).padStart(2,"0")}m`}
+function quoteRender(){const q=QUOTES[state.quote.index%QUOTES.length];document.getElementById("quoteText").textContent=`“${q.text}”`;document.getElementById("quoteSrc").textContent=q.src;document.getElementById("quoteCountdown").textContent=`${q.cat} • Next quote in ${quoteRemaining()}`}
+function setQuote(i){state.quote.index=(i+QUOTES.length)%QUOTES.length;state.quote.changedAt=Date.now();persistNow();quoteRender();showToast("Quote updated")}
+function autoQuoteCheck(){if(Date.now()-Number(state.quote.changedAt||0)>=8*60*60*1000){state.quote.index=(state.quote.index+1)%QUOTES.length;state.quote.changedAt=Date.now();persistNow();quoteRender();showToast("New 8-hour quote")}else quoteRender()}
+function resetAll(){if(!confirm("Reset all challenge data on this browser? This removes days, photos, members and settings."))return;const theme=state.theme;state=deepClone(DEFAULT_STATE);state.theme=theme;state.quote.changedAt=Date.now();persistNow();document.body.classList.toggle("light",theme==="light");renderCurrentDay();showToast("Challenge reset")}
+
+document.getElementById("taskList").addEventListener("click",e=>{const r=e.target.closest("[data-task-id]");if(r)toggleTask(r.dataset.taskId)});
+document.getElementById("taskList").addEventListener("keydown",e=>{const r=e.target.closest("[data-task-id]");if(r&&(e.key==="Enter"||e.key===" ")){e.preventDefault();toggleTask(r.dataset.taskId)}});
+document.getElementById("tracker").addEventListener("click",e=>{const d=e.target.closest("[data-day]");if(d)selectDay(Number(d.dataset.day))});
+document.getElementById("tracker").addEventListener("keydown",e=>{const d=e.target.closest("[data-day]");if(d&&(e.key==="Enter"||e.key===" ")){e.preventDefault();selectDay(Number(d.dataset.day))}});
+document.getElementById("photoGallery").addEventListener("click",e=>{const s=e.target.closest("[data-share-photo]"),d=e.target.closest("[data-delete-photo]");if(s)sharePhoto(s.dataset.sharePhoto);if(d)deletePhoto(d.dataset.deletePhoto)});
+document.getElementById("scoreDetail").onclick=scoreBreakdown;document.getElementById("themeBtn").onclick=()=>{state.theme=state.theme==="dark"?"light":"dark";document.body.classList.toggle("light",state.theme==="light");scheduleSave();showToast(state.theme==="light"?"Light mode":"Dark mode")};
+document.getElementById("prevDayBtn").onclick=()=>selectDay(state.currentDay-1);document.getElementById("nextDayBtn").onclick=()=>selectDay(state.currentDay+1);document.getElementById("resetBtn").onclick=resetAll;document.getElementById("waterPlus").onclick=()=>changeWater(1);document.getElementById("waterMinus").onclick=()=>changeWater(-1);
+document.getElementById("nutritionBtn").onclick=()=>addDataModal("nutrition");document.getElementById("nutritionLog").onclick=()=>addDataModal("nutrition");document.getElementById("recoveryBtn").onclick=()=>addDataModal("recovery");document.getElementById("metricsBtn").onclick=()=>addDataModal("metrics");document.getElementById("deenBtn").onclick=()=>addDataModal("deen");document.getElementById("addBtn").onclick=()=>addDataModal();document.getElementById("addDataBtn").onclick=()=>addDataModal();document.getElementById("photoBtn").onclick=addPhoto;document.getElementById("photoAddBtn").onclick=addPhoto;
+document.getElementById("memberBtn").onclick=()=>memberModal();document.getElementById("leaderFullBtn").onclick=leaderboardModal;document.getElementById("waBtn").onclick=()=>document.getElementById("whatsapp").scrollIntoView({behavior:"smooth"});document.getElementById("waSettingsBtn").onclick=whatsappSettings;document.getElementById("openWaBtn").onclick=openWhatsApp;document.getElementById("shareProgressBtn").onclick=()=>shareText("progress");document.getElementById("shareScoreBtn").onclick=()=>shareText("score");document.getElementById("shareAchievementBtn").onclick=()=>shareText("achievement");
+document.getElementById("notes").addEventListener("input",e=>{getDay().notes=e.target.value;scheduleSave()});document.getElementById("prevQuote").onclick=()=>setQuote(state.quote.index-1);document.getElementById("nextQuote").onclick=()=>setQuote(state.quote.index+1);
+document.getElementById("modalClose").onclick=closeModal;document.getElementById("modal").addEventListener("click",e=>{if(e.target.id==="modal")closeModal()});
+document.querySelectorAll(".nav button").forEach(b=>b.addEventListener("click",()=>document.getElementById(b.dataset.section).scrollIntoView({behavior:"smooth"})));
+document.querySelectorAll(".mobile-nav button").forEach(b=>b.addEventListener("click",()=>document.getElementById(b.dataset.target).scrollIntoView({behavior:"smooth"})));
+document.addEventListener("keydown",e=>{if(["TEXTAREA","INPUT","SELECT"].includes(e.target.tagName))return;if(e.key==="ArrowLeft")selectDay(state.currentDay-1);if(e.key==="ArrowRight")selectDay(state.currentDay+1);if(e.key==="Escape")closeModal()});
+window.addEventListener("pagehide",persistNow);
+if(state.theme==="light")document.body.classList.add("light");renderTracker();renderCurrentDay();quoteRender();autoQuoteCheck();clearInterval(quoteTimer);quoteTimer=setInterval(autoQuoteCheck,30000);
+"""
+s = s.replace("<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			fun
